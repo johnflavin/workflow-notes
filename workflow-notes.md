@@ -1,3 +1,53 @@
+# 2018-03-12
+
+Things you need a workflow system to do.
+
+1. Provide a way to define workflows.
+2. Launch jobs using the workflows.
+
+A *task* is a unit of stuff to be run. This could be a script, an executable, a docker container, whatever. This is the unit of action in a workflow.
+A *workflow* is a directed graph of tasks.
+
+The Pipeline Control Panel (PCP) is not a workflow system. It is a task system. You define all the tasks that can be run on the data within the PCP (where they are referred to as "pipelines"). There are interfaces to launch tasks, to see which tasks can be run, have been run, and failed to run. But, crucially, there is no workflow definition, no larger flow between tasks. There are event triggers, which are used to launch tasks under various circumstances. But at best those define individual edges of particular graphs; nowhere is the whole graph, the whole workflow, defined.
+
+As such, the PCP does not meet the needs for a workflow management system. It it focused on tasks, not the workflow made of multiple tasks.
+
+It is not even a general-purpose tool for task management and execution. The burden for defining a new task is fairly high. The approach the PCP takes to task management and execution is very tightly coupled into the tasks/workflows of the HCP/CCF, which does not change very often and does not need to service user-created workflows.
+
+## What does a workflow engine do?
+
+The fundamental thing we need to do is this:
+
+1. On one end, the front end, a user or event initiates a request to launch a workflow.
+2. On the other end, the back end, tasks are executed on compute nodes.
+
+In the middle something needs to turn the workflow into its constituent tasks and execute them. This is the role of the *workflow engine*. It reads the workflow definition and executes all the tasks contained within.
+
+There is a lot of variation on how that middle bit can happen. Some questions you could ask about the architecture of a workflow system:
+
+* Where does the workflow engine live? Front end / back end / middle?
+* Where does the workflow definition live? Front end / back end / middle?
+* How do job schedulers fit in?
+* Are all the tasks of one entire workflow job run on one compute node, or are workflow job tasks sent to compute nodes indivudually and a higher layer combines their results and keeps track of workflow state?
+* How does the front end receive updated information about workflow state? Task state?
+
+For an example, let's look at what we have currently: the XNAT Pipeline engine. Its workflow definitions are the pipeline XML files. "Pipelines" are made of "steps", each of which executes a "resource". A "step" + "resource" in pipeline terms are what I would call a task. The "resource" is itself defined in an XML file which is separate from the pipeline XML, and is essentially a re-usable part of the task definition. With that background, let's answer the above questions.
+
+* The workflow engine, what we would call the "pipeline engine" or the `XnatPipelineLauncher`, lives on all the back-end compute nodes. It also usually lives on the front-end server along with XNAT, but it is not used there in multi-node setups.
+* The workflow definition lives in the pipeline XML file. This file must be present on the front-end XNAT node as well as all back-end compute nodes. (The XML file only needs to be present on the XNAT node long enough for XNAT to read the file at the time it is defined in the site, then could be removed after. It is never used there again.)
+* A job scheduler can fit between the XNAT front end and the compute node back end. We provide our pipeline users with the `schedule` script as an extension point to customize job scheduling. The `PipelineJobSubmitter` is used internally in our `schedule` scripts for job submission to SGE.
+* The entire workflow is sent as one job from the front end to a single compute node.
+* The workflow engine sends workflow state back to the front end. As the tasks are not broken out into separate processes, no task-level state is available other than that in the workflow state itself.
+
+Now let's answer all the same questions, but this time about the PCP.
+
+* The workflow engine doesn't really exist as a thing. Part of the workflow is controlled by the Event infrastructure within XNAT, and part is controlled by a user clicking in the PCP interface to launch tasks.
+* Similar to above answer. The workflow is defined implicitly by the event connections and also in each user's head.
+* I don't know this answer. I think that the PBS system on the CHPC is used for scheduling, but perhaps also the SGE on the NRG infrastructure depending on the job.
+* Tasks are the unit of work in the PCP; individual task jobs are scheduled.
+* Task state is stored in XNAT, and updated when certain actions are performed (user launches a task job) or when conditions are met (periodically-run validator detects proper output files are present).
+
+
 # 2018-03-09
 
 Reiterating the two viable options I found before:
